@@ -46,7 +46,7 @@ public class ContactsMapFragment extends Fragment {
                              Bundle savedInstanceState) {
         // inflate and return the layout
         View v = inflater.inflate(R.layout.fragment_map, container,
-                true);
+                false);
 
 
         if (ActivityCompat.checkSelfPermission(getActivity(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(getActivity(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -106,13 +106,17 @@ public class ContactsMapFragment extends Fragment {
                         String latitude = obj.getString("latitude");
                         String longitude = obj.getString("longitude");
                         String name = obj.getString("name");
-                        String email = obj.getString("email");
-                        String phone = obj.getString("phone");
-                        String officePhone = obj.getString("officePhone");
+                        //String email = obj.getString("email");
+                        String phone = null;
+                        if(obj.has("phone"))
+                            phone = obj.getString("phone");
+                        else
+                            phone = "Unavailable.";
+                        //String officePhone = obj.getString("officePhone");
                         Marker marker = googleMap.addMarker(new MarkerOptions()
                                 .position(new LatLng(Double.parseDouble(latitude), Double.parseDouble(longitude)))
                                 .title(name)
-                                .snippet("Contact Details\nEmail- "+email+"\nPhone- "+phone+"\nOffice- "+officePhone));
+                                .snippet("Phone- "+phone));
                         locations.add(marker);
 
 

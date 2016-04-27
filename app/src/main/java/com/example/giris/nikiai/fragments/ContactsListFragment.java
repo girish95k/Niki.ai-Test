@@ -1,9 +1,17 @@
 package com.example.giris.nikiai.fragments;
 
+import android.app.ProgressDialog;
+import android.content.ContentProviderOperation;
+import android.content.ContentProviderResult;
+import android.content.ContentResolver;
 import android.content.Context;
+import android.content.OperationApplicationException;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.RemoteException;
+import android.provider.ContactsContract;
 import android.support.v4.app.Fragment;
 import android.support.v7.widget.DefaultItemAnimator;
 import android.support.v7.widget.LinearLayoutManager;
@@ -13,6 +21,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 
 import com.example.giris.nikiai.R;
 import com.example.giris.nikiai.fragments.adapters.ContactsListAdapter;
@@ -38,7 +47,7 @@ import cz.msebera.android.httpclient.Header;
  */
 public class ContactsListFragment extends Fragment {
 
-    public static final String MY_PREFS_NAME = "Login Credentials";
+    String Name[], Phone[], OfficePhone[], Email[];
 
     public static View.OnClickListener myOnClickListener;
     private static RecyclerView recyclerView;
@@ -69,7 +78,9 @@ public class ContactsListFragment extends Fragment {
         View rootView = inflater.inflate(R.layout.fragment_contacts_list, container, false);
         // Inflate the layout for this fragment
 
-        myOnClickListener = new MyOnClickListener(getActivity());
+        //readContacts();
+
+        //myOnClickListener = new MyOnClickListener(getActivity());
 
         recyclerView = (RecyclerView) rootView.findViewById(R.id.my_recycler_view);
         recyclerView.setHasFixedSize(false);
@@ -80,9 +91,15 @@ public class ContactsListFragment extends Fragment {
 
         DATA = new ArrayList<ContactsListModel>();
 
+        final ProgressDialog pDialog = new ProgressDialog(getActivity());
+        pDialog.setMessage("Loading...");
+        pDialog.show();
+        pDialog.setCancelable(true);
+
         AsyncHttpClient client = new AsyncHttpClient();
         client.get("http://private-b08d8d-nikitest.apiary-mock.com/contacts",  new AsyncHttpResponseHandler() {
             public void onSuccess(int statusCode, Header[] headers, byte[] response) {
+                pDialog.hide();
                 Log.e("success", new String(response));
                 try {
                     //JSONObject json = new JSONObject(new String(response));
@@ -90,16 +107,31 @@ public class ContactsListFragment extends Fragment {
                     JSONObject data2 = data.getJSONObject(0);
                     JSONArray data3 = data2.getJSONArray("contacts");
                     int i;
+                    Name = new String[data3.length()];
+                    Phone = new String[data3.length()];
+                    OfficePhone = new String[data3.length()];
+                    Email = new String[data3.length()];
                     for(i=0; i<data3.length(); i++){
                         JSONObject obj = data3.getJSONObject(i);
                         String name = obj.getString("name");
-                        String email = obj.getString("email");
-                        String phone = obj.getString("phone");
-                        String officePhone = obj.getString("officePhone");
+                        String email = null;
+                        if(obj.has("email"))
+                            email = obj.getString("email");
+                        String phone = null;
+                        if(obj.has("phone"))
+                            phone = obj.getString("phone");
+                        String officePhone = null;
+                        if(obj.has("officePhone"))
+                            officePhone = obj.getString("officePhone");
                         String latitude = obj.getString("latitude");
                         String longitude = obj.getString("longitude");
                         DATA.add(new ContactsListModel(name, email, phone, officePhone, latitude, longitude));
+                        Name[i] = name;
+                        Email[i] = email;
+                        Phone[i] = phone;
+                        OfficePhone[i] = officePhone;
                     }
+                    syncContacts();
                 } catch (JSONException e1) {
                     e1.printStackTrace();
                 }
@@ -108,18 +140,12 @@ public class ContactsListFragment extends Fragment {
 
             @Override
             public void onFailure(int statusCode, Header[] headers, byte[] errorResponse, Throwable e) {
+                pDialog.hide();
                 Log.e("Contacts", e.toString());
             }
         });
 
-/*
-        data.add(new ContactsListModel("Phalachandra", "WhiteField", "Near Form Value Mall", "5.0", "Skin"));
-        data.add(new ContactsListModel("Kempegowda", "B Narayanapura", "Near B Narayanapura Bus Stop", "2.5", "Ortho"));
-        data.add(new ContactsListModel("Harish", "WhiteField", "Near Form Value Mall", "3.5", "Heart"));
-        data.add(new ContactsListModel("Ram Mohan Shenoy", "AECS Layout", "Near CMRIT", "4.5", "Heart"));
-        data.add(new ContactsListModel("Jagan Shankar Reddy", "Mahadevapura", "Near Phoenix Mall", "3.0", "Heart"));
-        data.add(new ContactsListModel("Shyam Ashok Dellwala", "Garudacharpalya", "Near Brigade Metropolis", "4.5", "Heart"));
-        */adapter = new ContactsListAdapter(DATA, getActivity());
+        adapter = new ContactsListAdapter(DATA, getActivity());
         recyclerView.setAdapter(adapter);
 
         return rootView;
@@ -165,10 +191,14 @@ public class ContactsListFragment extends Fragment {
         @Override
         public void onClick(View v) {
             int selectedItemPosition = recyclerView.getChildLayoutPosition(v);
+            Toast.makeText(context, "Pressed"+selectedItemPosition, Toast.LENGTH_SHORT).show();
+            /*
             RecyclerView.ViewHolder viewHolder
                     = recyclerView.findViewHolderForLayoutPosition(selectedItemPosition);
             LinearLayout hiddenLayout
                     = (LinearLayout) viewHolder.itemView.findViewById(R.id.frame_expand);
+                    */
+
             /*
             if(hiddenLayout.getVisibility() == View.VISIBLE) {
                 hiddenLayout.setVisibility(View.GONE);
@@ -179,6 +209,57 @@ public class ContactsListFragment extends Fragment {
             */
         }
 
+    }
+
+    public void syncContacts() {
+        Log.e("length", "" + Name.length);
+        for(int i = 0; i < Phone.length; i++)
+        {
+            Log.e("phone", Phone[i]+"");
+        }
+        if (Name.length > 0) {
+            for (int i = 0; i < Name.length; i++) {
+                ArrayList<ContentProviderOperation> ops = new ArrayList<ContentProviderOperation>();
+                int rawContactInsertIndex = ops.size();
+
+                ops.add(ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+                        .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+                        .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null).build());
+                ops.add(ContentProviderOperation
+                        .newInsert(ContactsContract.Data.CONTENT_URI)
+                        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContactInsertIndex)
+                        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+                        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, Name[i]) // Name of the person
+                        .build());
+                if (Phone[i] != null) {
+                    ops.add(ContentProviderOperation
+                            .newInsert(ContactsContract.Data.CONTENT_URI)
+                            .withValueBackReference(
+                                    ContactsContract.Data.RAW_CONTACT_ID, rawContactInsertIndex)
+                            .withValue(ContactsContract.Contacts.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+                            .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, Phone[i]) // Number of the person
+                            .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE).build());// Type of mobile number
+                }
+                if(OfficePhone[i] != null) {
+                    ops.add(ContentProviderOperation
+                            .newInsert(ContactsContract.Data.CONTENT_URI)
+                            .withValueBackReference(
+                                    ContactsContract.Data.RAW_CONTACT_ID, rawContactInsertIndex)
+                            .withValue(ContactsContract.Contacts.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+                            .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, OfficePhone[i]) // Number of the person
+                            .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE).build());
+                }
+                try {
+                    ContentProviderResult[] res = getActivity().getContentResolver().applyBatch(ContactsContract.AUTHORITY, ops);
+                    Toast.makeText(getActivity(), "Contacts synced to phone.", Toast.LENGTH_SHORT).show();
+
+                } catch (RemoteException e) {
+                    // error
+                } catch (OperationApplicationException e) {
+                    // error
+                }
+            }
+        }
     }
 
 }
